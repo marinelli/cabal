@@ -1,0 +1,5 @@
+packages: .
+xfoo: top-level value
+
+package *
+  xfoo: inside a package stanza

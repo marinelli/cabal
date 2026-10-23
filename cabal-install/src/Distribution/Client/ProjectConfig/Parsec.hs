@@ -25,7 +25,7 @@ import Distribution.Compat.Lens
 import Distribution.Compat.Prelude
 import Distribution.FieldGrammar
 import Distribution.FieldGrammar.Parsec (NamelessField (..), namelessFieldAnn)
-import Distribution.Fields (Field (..), FieldLine (..), FieldName, Name (..), SectionArg (..), readFields')
+import Distribution.Fields (Field (..), FieldLine (..), FieldName, Name (..), SectionArg (..), isExtensionFieldName, readFields')
 import Distribution.Fields.ConfVar (parseConditionConfVar)
 import Distribution.Fields.Field (fieldLinesToString, sectionArgAnn)
 import Distribution.Fields.LexerMonad (toPWarnings)
@@ -181,7 +181,7 @@ parseProjectSkeleton cacheDir httpTransport verbosity projectDir source (Project
     -- they were imported from.
     fieldsToConfig :: ProjectConfigPath -> [Field Position] -> ParseResult ProjectFileSource ProjectConfig
     fieldsToConfig sourceConfigPath xs = do
-      let (fs, sectionGroups) = partitionFields xs
+      let (fs, sectionGroups) = partitionProjectFields xs
           sections = concat sectionGroups
       config <- parseFieldGrammarCheckingStanzas cabalSpec fs (projectConfigFieldGrammar sourceConfigPath (knownProgramNames programDb)) stanzas
       config' <- view stateConfig <$> execStateT (goSections programDb sections) (SectionS config)
@@ -269,7 +269,7 @@ parseSection programDb (MkSection (Name pos name) args secFields)
   | otherwise = do
       warnInvalidSubsection pos name
   where
-    (fields, sections) = partitionFields secFields
+    (fields, sections) = partitionProjectFields secFields
     warnInvalidSubsection pos' name' = lift $ parseWarning pos' PWTInvalidSubsection $ "Invalid subsection " ++ show name'
     programNames = knownProgramNames programDb
     verifyNullSubsections = unless (null sections) (warnInvalidSubsection pos name)
@@ -282,6 +282,15 @@ parseSection programDb (MkSection (Name pos name) args secFields)
 
 stanzas :: Set BS.ByteString
 stanzas = Set.fromList ["source-repository-package", "program-options", "program-locations", "repository", "package"]
+
+-- | Like 'partitionFields', but drops extension fields, see
+-- 'isExtensionFieldName'. Other tools can keep their own data in these fields,
+-- so we accept them without a warning. Unlike in @.cabal@ files, we do not
+-- store them.
+partitionProjectFields :: [Field Position] -> (Fields Position, [[Section Position]])
+partitionProjectFields xs = (Map.filterWithKey (\name _ -> not (isExtensionFieldName name)) fs, sections)
+  where
+    (fs, sections) = partitionFields xs
 
 -- | Currently a duplicate of 'Distribution.Client.Config.postProcessRepo' but migrated to Parsec ParseResult.
 postProcessRemoteRepo :: Position -> RemoteRepo -> ParseResult src (Either LocalRepo RemoteRepo)

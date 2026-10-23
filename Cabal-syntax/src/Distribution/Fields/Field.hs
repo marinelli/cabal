@@ -21,6 +21,8 @@ module Distribution.Fields.Field
   , mkName
   , getName
   , nameAnn
+  , extensionFieldPrefix
+  , isExtensionFieldName
 
     -- * Conversions to String
   , sectionArgsToString
@@ -126,6 +128,19 @@ getName (Name _ bs) = bs
 
 nameAnn :: Name ann -> ann
 nameAnn (Name ann _) = ann
+
+-- | Prefix of the names of extension fields, i.e. @x-@. Other tools can keep
+-- their own data in extension fields, and Cabal does not interpret them.
+--
+-- @since 3.20.0.0
+extensionFieldPrefix :: FieldName
+extensionFieldPrefix = B.pack "x-"
+
+-- | Whether a field name starts with 'extensionFieldPrefix'.
+--
+-- @since 3.20.0.0
+isExtensionFieldName :: FieldName -> Bool
+isExtensionFieldName = B.isPrefixOf extensionFieldPrefix
 
 -------------------------------------------------------------------------------
 -- To Strings

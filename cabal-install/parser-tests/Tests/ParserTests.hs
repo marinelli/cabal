@@ -19,6 +19,8 @@ import Distribution.Client.HttpUtils
 import Distribution.Client.IndexUtils.ActiveRepos (ActiveRepoEntry (..), ActiveRepos (..), CombineStrategy (..))
 import Distribution.Client.IndexUtils.IndexState (RepoIndexState (..), headTotalIndexState, insertIndexState)
 import Distribution.Client.ProjectConfig
+import qualified Distribution.Client.ProjectConfig.Legacy as Legacy
+import qualified Distribution.Client.ProjectConfig.Parsec as Parsec
 import Distribution.Client.RebuildMonad (runRebuild)
 import Distribution.Client.Targets (readUserConstraint)
 import Distribution.Client.Types.AllowNewer (AllowNewer (..), AllowOlder (..), RelaxDepMod (..), RelaxDepScope (..), RelaxDepSubject (..), RelaxDeps (..), RelaxedDep (..))
@@ -30,7 +32,10 @@ import Distribution.Client.Types.SourceRepo
 import Distribution.Client.Types.WriteGhcEnvironmentFilesPolicy (WriteGhcEnvironmentFilesPolicy (..))
 import Distribution.Compat.Prelude
 import Distribution.Compiler (CompilerFlavor (..))
+import qualified Distribution.Deprecated.ParseUtils as OldParser (PWarning (..))
+import Distribution.Deprecated.ProjectParseUtils (ProjectParseResult (..))
 import Distribution.Parsec (simpleParsec)
+import Distribution.Parsec.Warning (PWarning (..), PWarningWithSource (..))
 import Distribution.Simple.Compiler (DebugInfoLevel (..), OptimisationLevel (..), PackageDBX (..), ProfDetailLevel (..))
 import Distribution.Simple.Flag
 import Distribution.Simple.InstallDirs (InstallDirs (..), toPathTemplate)
@@ -57,6 +62,7 @@ import Distribution.Types.PackageVersionConstraint (PackageVersionConstraint (..
 import Distribution.Types.SourceRepo (KnownRepoType (..), RepoType (..))
 import Distribution.Types.Version (mkVersion)
 import Distribution.Types.VersionRange.Internal (VersionRange (..))
+import Distribution.Utils.Generic (readUTF8File, toUTF8BS)
 import Distribution.Utils.NubList
 import Distribution.Verbosity
 import GHC.Stack (HasCallStack)
@@ -66,7 +72,7 @@ import System.FilePath ((</>))
 import Prelude ()
 
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (Assertion, assertBool, assertEqual, testCase)
+import Test.Tasty.HUnit (Assertion, assertBool, assertEqual, assertFailure, testCase)
 
 parserTests :: TestTree
 parserTests =
@@ -94,6 +100,8 @@ parserTests =
     , testCase "test haddock-all flag" testHaddockAll
     , testCase "test override haddock-all: True" testHaddockAllOverwriteTrue
     , testCase "test override haddock-all: False" testHaddockAllOverwriteFalse
+    , testCase "accept extension fields without warnings" testExtensionFields
+    , testCase "warn about unknown fields" testUnknownFields
     ]
 
 testPackages :: Assertion
@@ -551,6 +559,22 @@ testHaddockAllOverwriteFalse = do
   assertConfigEquals (Flag False) config legacy (packageConfigHaddockBenchmarks . projectConfigLocalPackages . snd . condTreeData)
   assertConfigEquals (Flag False) config legacy (packageConfigHaddockForeignLibs . projectConfigLocalPackages . snd . condTreeData)
 
+testExtensionFields :: Assertion
+testExtensionFields = do
+  (parsecWarnings, legacyWarnings) <- readWarnings "extension-fields"
+  assertEqual "Parsec parser warns about extension fields" [] parsecWarnings
+  assertEqual "Legacy parser warns about extension fields" [] legacyWarnings
+  (config, legacy) <- readConfigDefault "extension-fields"
+  assertConfigEquals ["."] config legacy (projectPackages . snd . condTreeData)
+  assertConfigEquals ["https://example.com/Project.git"] config legacy (map srpLocation . projectPackagesRepo . snd . condTreeData)
+
+-- | A field that starts with @x@ but not with @x-@ is not an extension field.
+testUnknownFields :: Assertion
+testUnknownFields = do
+  (parsecWarnings, legacyWarnings) <- readWarnings "unknown-fields"
+  assertEqual "Parsec parser warnings" (replicate 2 "Unknown field: \"xfoo\"") parsecWarnings
+  assertEqual "Legacy parser warnings" ["Unrecognized field 'xfoo' on line 2", "Unrecognized field 'xfoo' on line 5"] legacyWarnings
+
 -------------------------------------------------------------------------------
 -- Test Utilities
 -------------------------------------------------------------------------------
@@ -578,6 +602,27 @@ readConfig testSubDir projectFileName = do
       runRebuild testRootFp $
         readProjectFileSkeletonLegacy verbosity httpTransport distDirLayout ProjectFileKeyMain
   return (parsec, legacy)
+
+-- | Parses a project file with both parsers and returns the messages of their
+-- warnings, the Parsec parser first.
+readWarnings :: FilePath -> IO ([String], [String])
+readWarnings testSubDir = do
+  (TestDir _ projectConfigFp distDirLayout) <- testDirInfo testSubDir "cabal.project"
+  httpTransport <- configureTransport verbosity [] Nothing
+  contents <- ProjectConfigToParse . toUTF8BS <$> readUTF8File projectConfigFp
+  let cacheDir = distDownloadSrcDirectory distDirLayout
+  parsecResult <- Parsec.parseProject projectConfigFp cacheDir httpTransport verbosity contents
+  parsecWarnings <- case Parsec.runParseResult parsecResult of
+    (warnings, Right _) -> return [pwarningMessage w | PWarningWithSource _ w <- warnings]
+    (_, Left errs) -> assertFailure ("Parsec parser failed: " ++ show errs)
+  legacyResult <- Legacy.parseProject projectConfigFp cacheDir httpTransport verbosity contents
+  legacyWarnings <- case legacyResult of
+    ProjectParseOk warnings _ -> return (map (legacyWarningMessage . snd) warnings)
+    ProjectParseFailed err -> assertFailure ("Legacy parser failed: " ++ show err)
+  return (parsecWarnings, legacyWarnings)
+  where
+    legacyWarningMessage (OldParser.PWarning msg) = msg
+    legacyWarningMessage (OldParser.UTFWarning _ msg) = msg
 
 assertConfigEquals :: (Eq a, Show a, HasCallStack) => a -> ProjectConfigSkeleton -> ProjectConfigSkeleton -> (ProjectConfigSkeleton -> a) -> Assertion
 assertConfigEquals expected config configLegacy access = do

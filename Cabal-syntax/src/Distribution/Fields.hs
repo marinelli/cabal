@@ -6,6 +6,8 @@ module Distribution.Fields
   , FieldLine (..)
   , SectionArg (..)
   , FieldName
+  , extensionFieldPrefix
+  , isExtensionFieldName
 
     -- * Grammar and parsing
 

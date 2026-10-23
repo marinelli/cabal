@@ -1,0 +1,27 @@
+packages: .
+x-tool: top-level value
+X-Upper-Case: field names are case-insensitive
+x-multi-line:
+  first line
+  second line
+
+if os(linux)
+  x-conditional: inside a conditional
+
+package *
+  x-package: inside a package stanza
+
+program-options
+  x-program-options: inside a program-options stanza
+
+program-locations
+  x-ghc-location: inside a program-locations stanza
+
+repository packages.example.org
+  url: http://packages.example.org/
+  x-repository: inside a repository stanza
+
+source-repository-package
+  type: git
+  location: https://example.com/Project.git
+  x-source-repository-package: inside a source-repository-package stanza

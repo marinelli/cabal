@@ -106,6 +106,33 @@ There are a number of limitations that come with this approach however; please
 see :ref:`How can I have a reproducible set of versions for my dependencies?<how reproducible>` for
 more information.
 
+.. _project-extension-fields:
+
+Extension fields
+----------------
+
+As of ``cabal-install`` version 3.20, a ``cabal.project`` file can contain
+extension fields. An extension field is a field whose name starts with ``x-``.
+Other tools can use these fields to keep their own data in the project file.
+``cabal`` ignores extension fields and does not warn about them.
+
+Extension fields can appear at the top level, inside conditionals and inside
+every stanza:
+
+::
+
+    packages: .
+    x-my-tool-setting: some value
+
+    source-repository-package
+      type: git
+      location: https://example.com/Project.git
+      x-my-tool-update: weekly
+
+Unlike extension fields in a package description file, ``cabal`` does not
+store the values of extension fields in a project file. A tool that needs them
+must parse the project file itself.
+
 Specifying the local packages
 -----------------------------
 

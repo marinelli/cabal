@@ -126,7 +126,7 @@ packageDescriptionFieldGrammar = do
   synopsis <- freeTextFieldDef "synopsis" L.synopsis
   description <- freeTextFieldDef "description" L.description
   category <- freeTextFieldDef "category" L.category
-  customFieldsPD <- map (bimap T.unpack T.unpack) <$> prefixedFields "x-" L.customFieldsPDText
+  customFieldsPD <- map (bimap T.unpack T.unpack) <$> prefixedFields extensionFieldPrefix L.customFieldsPDText
   buildTypeRaw <- optionalField "build-type" L.buildTypeRaw
   let setupBuildInfo = Nothing
       -- components
@@ -722,7 +722,7 @@ buildInfoFieldGrammar = do
   sharedOptions <- sharedOptionsFieldGrammar
   profSharedOptions <- profSharedOptionsFieldGrammar
   let staticOptions = mempty
-  customFieldsBI <- prefixedFields "x-" L.customFieldsBI
+  customFieldsBI <- prefixedFields extensionFieldPrefix L.customFieldsBI
   targetBuildDepends <- monoidalFieldAla "build-depends" formatDependencyList L.targetBuildDepends
   mixins <-
     monoidalFieldAla "mixins" formatMixinList L.mixins

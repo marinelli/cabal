@@ -264,7 +264,8 @@ ppSection name arg fields def cur
 --
 
 -- | Much like 'parseFields' but it also allows subsections. The permitted
--- subsections are given by a list of 'SectionDescr's.
+-- subsections are given by a list of 'SectionDescr's. Extension fields are
+-- skipped without a warning, see 'isExtensionField'.
 parseFieldsAndSections
   :: [FieldDescr a]
   -- ^ field
@@ -275,8 +276,8 @@ parseFieldsAndSections
   -> a
   -> [Field]
   -> ParseResult a
-parseFieldsAndSections fieldDescrs sectionDescrs fgSectionDescrs =
-  foldM setField
+parseFieldsAndSections fieldDescrs sectionDescrs fgSectionDescrs initial =
+  foldM setField initial . filter (not . isExtensionField)
   where
     fieldMap = Map.fromList [(fieldName f, f) | f <- fieldDescrs]
     sectionMap = Map.fromList [(sectionName s, s) | s <- sectionDescrs]
@@ -301,7 +302,7 @@ parseFieldsAndSections fieldDescrs sectionDescrs fgSectionDescrs =
           b <- parseFieldsAndSections fieldDescrs' sectionDescrs' [] sectionEmpty fields
           set line param b a
         Just (Right (FGSectionDescr _ grammar _getter setter)) -> do
-          let fields1 = map convertField fields
+          let fields1 = map convertField (filter (not . isExtensionField) fields)
               (fields2, sections) = partitionFields fields1
           -- TODO: recurse into sections
           for_ (concat sections) $ \(FG.MkSection (F.Name (Position line' _) name') _ _) ->
@@ -325,6 +326,13 @@ parseFieldsAndSections fieldDescrs sectionDescrs fgSectionDescrs =
               ++ "' on line "
               ++ show line
           return a
+
+-- | Whether a field is an extension field, see 'F.isExtensionFieldName'. Other
+-- tools can keep their own data in these fields, so we accept them without a
+-- warning.
+isExtensionField :: Field -> Bool
+isExtensionField (F _ name _) = F.isExtensionFieldName (toUTF8BS name)
+isExtensionField _ = False
 
 convertField :: Field -> F.Field Position
 convertField (F line name str) =
